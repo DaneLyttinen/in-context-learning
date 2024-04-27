@@ -55,7 +55,7 @@ def init_dicts(train_results, test_results, hidden_size, num_tasks):
     return train_results, test_results
 
 def train_model(hidden_size):
-    num_tasks_range = [2**i for i in range(22, 24)]  # Range of number of tasks
+    num_tasks_range = [2**i for i in range(16, 24)]  # Range of number of tasks
 
     train_results = {}
     train_results[hidden_size] = {}
@@ -129,15 +129,16 @@ def init_datasets():
         seq_len=config["seq_len"],
         labels_shifted_by_one=config["whole_seq_prediction"]
     )
-    train_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_train, batch_size=config["batch_size"], num_workers=8, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_train, batch_size=config["batch_size"])
 
     rand_lin_proj_mnist_dataset_test = RandomLinearProjectionMNIST(
         orig_mnist_dataset=datasets.MNIST(DATA_PATH, train=False, download=False, transform=RandomLinearProjectionMNIST.get_default_transform()),
         num_tasks=config["num_of_tasks"],
         seq_len=config["seq_len"],
-        labels_shifted_by_one=config["whole_seq_prediction"]
+        labels_shifted_by_one=config["whole_seq_prediction"],
+        is_train=False
     )
-    test_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_test, batch_size=config["batch_size"],num_workers=8, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_test, batch_size=config["batch_size"])
     print("... Initialized datasets ...")
     return train_loader,test_loader
     ### save dataloaders locally
