@@ -83,7 +83,7 @@ class RandomLinearProjectionMNIST(Dataset):
             file_index = 0
         else:
             file_index = math.ceil(idx * self.seq_len / self.batch_size)
-        if (file_index > self.curr_index):
+        if (file_index >= self.curr_index):
             self.dataset = pl.read_parquet(f"dataset_{file_index}_{self.ext}.parquet")
             self.curr_index = file_index
         return self.dataset
