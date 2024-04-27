@@ -129,7 +129,7 @@ def init_datasets():
         seq_len=config["seq_len"],
         labels_shifted_by_one=config["whole_seq_prediction"]
     )
-    train_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_train, batch_size=config["batch_size"], num_workers=8, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_train, batch_size=config["batch_size"], shuffle=True)
 
     rand_lin_proj_mnist_dataset_test = RandomLinearProjectionMNIST(
         orig_mnist_dataset=datasets.MNIST(DATA_PATH, train=False, download=False, transform=RandomLinearProjectionMNIST.get_default_transform()),
@@ -137,7 +137,7 @@ def init_datasets():
         seq_len=config["seq_len"],
         labels_shifted_by_one=config["whole_seq_prediction"]
     )
-    test_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_test, batch_size=config["batch_size"],num_workers=8, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(rand_lin_proj_mnist_dataset_test, batch_size=config["batch_size"], shuffle=True)
     print("... Initialized datasets ...")
     return train_loader,test_loader
     ### save dataloaders locally

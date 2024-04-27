@@ -98,32 +98,34 @@ class RandomLinearProjectionMNIST(Dataset):
         self.spare_mem = spare_mem
         self.seq_len = seq_len
         # Create task transformations for the whole dataset
-        self.images, self.labels = self.create_augmented_tasks()
+        #self.images, self.labels = self.create_augmented_tasks()
+        self.indexes = list(range(num_tasks + len(orig_mnist_dataset) + 1))
+        random.shuffle(self.indexes)
     
-    def create_augmented_tasks(self):
-        # Original data is considered task 0
-        original_images = [self.orig_mnist_dataset[i][0].view(784) for i in range(len(self.orig_mnist_dataset))]
-        original_images = [(transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16) for transformed_image in original_images]
-        original_labels = [self.orig_mnist_dataset[i][1] for i in range(len(self.orig_mnist_dataset))]
+    # def create_augmented_tasks(self):
+    #     # Original data is considered task 0
+    #     original_images = [self.orig_mnist_dataset[i][0].view(784) for i in range(len(self.orig_mnist_dataset))]
+    #     original_images = [(transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16) for transformed_image in original_images]
+    #     original_labels = [self.orig_mnist_dataset[i][1] for i in range(len(self.orig_mnist_dataset))]
         
-        with ThreadPoolExecutor() as executor:
-            # Creating a future for each task
-            futures = [executor.submit(self.process_task, task_idx) for task_idx in range(self.num_tasks)]
-            for future in as_completed(futures):
-                transformed_image, permuted_label = future.result()
-                original_images.append(transformed_image)
-                original_labels.append(permuted_label)
-        del self.orig_mnist_dataset
-        images_tensor = torch.stack(original_images)
-        labels_tensor = torch.tensor(original_labels)
-        return images_tensor,labels_tensor
+    #     with ThreadPoolExecutor() as executor:
+    #         # Creating a future for each task
+    #         futures = [executor.submit(self.process_task, task_idx) for task_idx in range(self.num_tasks)]
+    #         for future in as_completed(futures):
+    #             transformed_image, permuted_label = future.result()
+    #             original_images.append(transformed_image)
+    #             original_labels.append(permuted_label)
+    #     del self.orig_mnist_dataset
+    #     images_tensor = torch.stack(original_images)
+    #     labels_tensor = torch.tensor(original_labels)
+    #     return images_tensor,labels_tensor
     
     def process_task(self, task_idx):
-        rand_idx = np.random.randint(0, len(self.orig_mnist_dataset))
-        lin_transform = self.generate_lin_transform(rand_idx)
-        label_perm = self.generate_label_perm(rand_idx)
+       # rand_idx = np.random.randint(0, len(self.orig_mnist_dataset))
+        lin_transform = self.generate_lin_transform(task_idx)
+        label_perm = self.generate_label_perm(task_idx)
         
-        image, label = self.orig_mnist_dataset[rand_idx]
+        image, label = self.orig_mnist_dataset[task_idx]
         transformed_image = lin_transform @ image.view(784)
         transformed_image = (transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16)
         permuted_label = label_perm[label]
@@ -139,13 +141,25 @@ class RandomLinearProjectionMNIST(Dataset):
         return torch.randperm(10, generator=generator)
     
     def __len__(self):
-        return len(self.images) // self.seq_len
+        return len(self.orig_mnist_dataset) + self.num_tasks
     
     def __getitem__(self, idx):
-        images = self.images[idx:idx+self.seq_len]
-        labels = self.labels[idx:idx+self.seq_len]
-        x = images
-        y = labels
+        images = []
+        labels = []
+        for i in range(100):
+            idx = self.indexes.pop()
+            if idx <= len(self.orig_mnist_dataset):
+                image, label = self.orig_mnist_dataset[idx]
+                label = torch.tensor(label)
+                transformed_image = image.view(784)
+                image = (transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16)
+            else:
+                idx = idx % (len(self.orig_mnist_dataset) -1)
+                image, label = self.process_task(idx)
+            images.append(image)
+            labels.append(label)
+        x = torch.stack(images).squeeze(1)
+        y = torch.stack(labels).squeeze(0)
         if self.labels_shifted_by_one:
             # append labels to images ((x1,0), (x2,y1), ..., (xn-1, yn-2), (xn, yn-1)) - all except the first one
             y_shifted = torch.cat((torch.zeros(size=(1, 10)), F.one_hot(y[:-1], num_classes=10)), dim=0) # (seq_len, 10)
