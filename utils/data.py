@@ -82,8 +82,9 @@ class RandomLinearProjectionMNIST(Dataset):
         if idx == 0:
             file_index = 0
         else:
-            file_index = math.ceil(idx * self.seq_len / self.batch_size)
-        if (file_index >= self.curr_index):
+            idx = (idx + 1) * self.seq_len
+            file_index = math.floor(idx / self.batch_size)
+        if (file_index > self.curr_index):
             self.dataset = pl.read_parquet(f"dataset_{file_index}_{self.ext}.parquet")
             self.curr_index = file_index
         return self.dataset
@@ -125,7 +126,7 @@ class RandomLinearProjectionMNIST(Dataset):
     def __getitem__(self, idx):
         # Efficiently fetch batch from disk
         df = self.get_dataframe(idx)
-        batch_df = df.slice(idx * self.seq_len, self.seq_len)
+        batch_df = df.slice(idx, self.seq_len)
         
         x = torch.tensor(batch_df['images'], dtype=torch.float32)
         y = torch.tensor(batch_df['labels'], dtype=torch.int64)
