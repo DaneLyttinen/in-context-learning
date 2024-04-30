@@ -1,18 +1,26 @@
-import polars as pl
+import pandas as pd
 import numpy as np
-
+import pickle
 # Create a sample DataFrame
-df = pl.DataFrame({
-    "A": [1, 2, 3, 4, 5],
-    "B": ["one", "two", "three", "four", "five"],
-    "C": np.random.rand(5)
+res_dict = pd.read_pickle("data/results/transformer_train_38_16_16.pkl")
+
+
+import polars as pl
+
+# Create two example dataframes
+df1 = pl.DataFrame({
+    "id": [1, 2, 3],
+    "name": ["Alice", "Bob", "Charlie"]
 })
 
-# Shuffle the DataFrame
-shuffled_df = df.shuffle()
+df2 = pl.DataFrame({
+    "id": [4, 5],
+    "name": ["David", "Eve"]
+})
 
-# Display the original and shuffled DataFrame
-print("Original DataFrame:")
-print(df)
-print("\nShuffled DataFrame:")
-print(shuffled_df)
+# Concatenate the dataframes vertically
+concatenated_df = pl.concat([df1, df2])
+
+# Display the result
+print(concatenated_df)
+

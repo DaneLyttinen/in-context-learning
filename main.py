@@ -104,13 +104,14 @@ def train_model(hidden_size):
             test_results[hidden_size][num_tasks]["accuraccy"].append(eval_acc)
             ### save model
             if epoch % config["ckpt_freq"] == 0:
-                save_checkpoint(epoch=epoch, model=model, optimizer=model_optim, loss_train=loss.detach(), loss_eval=eval_loss, config=config)
-                save_results(test_results,train_results,epoch,hidden_size, num_tasks)
+               save_checkpoint(epoch=epoch, model=model, optimizer=model_optim, loss_train=loss.detach(), loss_eval=eval_loss, config=config)
+               save_results(test_results,train_results,epoch,hidden_size, num_tasks)
             # if early_stopper.early_stop(eval_loss):
             #     print(f"Stopping early")
             #     save_checkpoint(epoch=epoch, model=model, optimizer=model_optim, loss_train=loss.detach(), loss_eval=eval_loss, config=config)
             #     save_results(test_results,train_results,epoch,hidden_size, num_tasks)
             #     break
+        save_results(test_results,train_results,epoch,hidden_size, num_tasks)
     return test_results, train_results
 
     #raise NotImplementedError

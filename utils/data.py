@@ -8,7 +8,7 @@ import random
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import polars as pl
 import math
-
+import multiprocessing
 DATA_PATH = os.path.join(os.getcwd(),"data")
 
 
@@ -46,24 +46,42 @@ class RandomLinearProjectionMNIST(Dataset):
         self.seq_len = seq_len
         self.length = len(orig_mnist_dataset) + num_tasks
         self.batch_size = 60000
+        self.dataset = None
         self.create_augmented_tasks()
         self.curr_index = 0
-        self.dataset = pl.read_parquet(f"dataset_{self.curr_index}_{self.ext}.parquet")
+
+        
 
     def create_augmented_tasks(self):
         # Original data is considered task 0
         original_images = [self.orig_mnist_dataset[i][0].view(784) for i in range(len(self.orig_mnist_dataset))]
         original_images = [(transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16) for transformed_image in original_images]
         original_labels = [self.orig_mnist_dataset[i][1] for i in range(len(self.orig_mnist_dataset))]
-        self.create_and_save_df(original_images, original_labels, 0)
+       
+        if self.num_tasks > (2 ** 19):
+            self.create_and_save_df(original_images, original_labels, 0)
+            self.dataset = pl.read_parquet(f"dataset_{self.curr_index}_{self.ext}.parquet") 
+        #else:
+        df = pl.DataFrame({
+        "images": [image.numpy() for image in original_images],
+        "labels": original_labels})
 
         original_images = []
         original_labels = []
         num_batches = math.ceil(self.num_tasks / self.batch_size)
-        num_workers = min(4, num_batches)
+        num_workers = min(24, num_batches)
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             # Creating a future for each task
             futures = [executor.submit(self.perform_batch_op, batch_idx) for batch_idx in range(num_batches)]
+            dataframes = [df]
+            
+            # Wait for all futures to complete
+            for future in as_completed(futures):
+                # Retrieve the result from each future
+                result_df = future.result()
+                dataframes.append(result_df)
+            print("Concatenated all datasets")
+            self.dataset = pl.concat(dataframes)
         return
     
     def perform_batch_op(self, batch):
@@ -76,7 +94,7 @@ class RandomLinearProjectionMNIST(Dataset):
             transformed_image, permuted_label = future
             original_images.append(transformed_image)
             original_labels.append(permuted_label.item())
-        self.create_and_save_df(original_images, original_labels, batch+1)
+        return self.create_and_save_df(original_images, original_labels, batch+1)
 
     def get_dataframe(self, idx):
         if idx == 0:
@@ -96,7 +114,11 @@ class RandomLinearProjectionMNIST(Dataset):
         })
         df = df.with_columns(pl.all().shuffle(seed=1))
         filename = f"dataset_{index}_{self.ext}.parquet"
-        df.write_parquet(filename)
+        if (self.num_tasks >  (2 ** 19)):
+            df.write_parquet(filename)
+        else:
+            print(f"Returned df with index {index}")
+            return df
         print(f"Wrote file {filename}")
         del df
     
