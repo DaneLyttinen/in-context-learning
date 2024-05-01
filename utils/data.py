@@ -69,20 +69,22 @@ class RandomLinearProjectionMNIST(Dataset):
         original_images = []
         original_labels = []
         num_batches = math.ceil(self.num_tasks / self.batch_size)
-        num_workers = min(24, num_batches)
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            # Creating a future for each task
-            futures = [executor.submit(self.perform_batch_op, batch_idx) for batch_idx in range(num_batches)]
-            dataframes = [df]
-            
-            # Wait for all futures to complete
-            for future in as_completed(futures):
-                # Retrieve the result from each future
-                result_df = future.result()
-                dataframes.append(result_df)
-            print("Concatenated all datasets")
-            self.dataset = pl.concat(dataframes)
-        return
+        num_workers = int(os.environ.get('OMP_NUM_THREADS',
+    multiprocessing.cpu_count()))
+        num_workers = min(num_workers, num_batches)
+        print(num_workers)
+
+        pool = multiprocessing.Pool(processes=num_workers)
+        try:
+            # Map your operations to the pool
+            results = pool.map(self.perform_batch_op, range(num_batches))
+        finally:
+            # Ensure the pool is closed to free up resources
+            pool.close()
+            pool.join()
+        dataframes = [df] + results
+        print("Concatenated all datasets")
+        self.dataset = pl.concat(dataframes)
     
     def perform_batch_op(self, batch):
         start_index = batch * self.batch_size
