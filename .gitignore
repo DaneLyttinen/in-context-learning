@@ -1,4 +1,7 @@
 .ipynb_checkpoints/
 data/
+artifacts/
 */*__pycache__
 .vscode/
+*.parquet
+*.pkl
