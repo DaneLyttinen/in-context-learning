@@ -32,13 +32,13 @@ class RandomLinearProjectionMNIST(Dataset):
         orig_mnist_dataset,
         num_tasks=10,  # Number of augmented versions to create
         seq_len=100,
+        hidden_size=16,
         labels_shifted_by_one=False,
+        seed=1,
         spare_mem=False,
-        is_train=True,
-        data_path="dataset.parquet"
+        is_train=True
     ):
         self.orig_mnist_dataset = orig_mnist_dataset
-        self.data_path = data_path
         self.ext = "train" if is_train else "test"
         self.num_tasks = num_tasks
         self.labels_shifted_by_one = labels_shifted_by_one
@@ -47,9 +47,10 @@ class RandomLinearProjectionMNIST(Dataset):
         self.length = len(orig_mnist_dataset) + num_tasks
         self.batch_size = 60000
         self.dataset = None
-        self.create_augmented_tasks()
         self.curr_index = 0
-
+        self.dataset = None
+        self.hidden_size = hidden_size
+        self.create_augmented_tasks()
         
 
     def create_augmented_tasks(self):
@@ -60,7 +61,7 @@ class RandomLinearProjectionMNIST(Dataset):
        
         if self.num_tasks > (2 ** 19):
             self.create_and_save_df(original_images, original_labels, 0)
-            self.dataset = pl.read_parquet(f"dataset_{self.curr_index}_{self.ext}.parquet") 
+            self.dataset = pl.read_parquet(f"dataset_{self.curr_index}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet") 
         #else:
         df = pl.DataFrame({
         "images": [image.numpy() for image in original_images],
@@ -73,7 +74,7 @@ class RandomLinearProjectionMNIST(Dataset):
     multiprocessing.cpu_count()))
         num_workers = min(num_workers, num_batches)
         print(num_workers)
-
+        multiprocessing.set_start_method("spawn")
         pool = multiprocessing.Pool(processes=num_workers)
         try:
             # Map your operations to the pool
@@ -82,6 +83,9 @@ class RandomLinearProjectionMNIST(Dataset):
             # Ensure the pool is closed to free up resources
             pool.close()
             pool.join()
+        if (any(item is None for item in results)):
+            self.dataset = pl.read_parquet(f"dataset_0_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet")
+            return
         dataframes = [df] + results
         print("Concatenated all datasets")
         self.dataset = pl.concat(dataframes)
@@ -99,14 +103,22 @@ class RandomLinearProjectionMNIST(Dataset):
         return self.create_and_save_df(original_images, original_labels, batch+1)
 
     def get_dataframe(self, idx):
+        if self.num_tasks <= (2 ** 19):
+            return self.dataset
         if idx == 0:
             file_index = 0
         else:
             idx = (idx + 1) * self.seq_len
             file_index = math.floor(idx / self.batch_size)
         if (file_index > self.curr_index):
-            self.dataset = pl.read_parquet(f"dataset_{file_index}_{self.ext}.parquet")
-            self.curr_index = file_index
+            files_to_read = [f"dataset_{file_index + i}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet" for i in range(8)]
+            existing_files = [file for file in files_to_read if os.path.exists(file)]
+            if existing_files:
+                self.dataset = pl.concat([pl.read_parquet(file) for file in existing_files])
+                self.curr_index = file_index + len(existing_files) - 1  # Update current index to the last loaded file index.
+            else:
+                # Optionally handle the case where no files are found.
+                print("No files found for the current index range.")
         return self.dataset
 
     def create_and_save_df(self,images, labels, index):
@@ -115,7 +127,7 @@ class RandomLinearProjectionMNIST(Dataset):
             "labels": labels
         })
         df = df.with_columns(pl.all().shuffle(seed=1))
-        filename = f"dataset_{index}_{self.ext}.parquet"
+        filename = f"dataset_{index}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet"
         if (self.num_tasks >  (2 ** 19)):
             df.write_parquet(filename)
         else:
