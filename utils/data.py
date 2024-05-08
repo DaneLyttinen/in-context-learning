@@ -149,11 +149,11 @@ class RandomLinearProjectionMNIST(Dataset):
         return transformed_image, permuted_label
     
     def generate_lin_transform(self, task_idx):
-        generator = torch.Generator().manual_seed(task_idx)
+        generator = torch.Generator().manual_seed(task_idx * self.seed)
         return torch.normal(0, 1/784, (784, 784), generator=generator)
     
     def generate_label_perm(self, task_idx):
-        generator = torch.Generator().manual_seed(task_idx)
+        generator = torch.Generator().manual_seed(task_idx * self.seed)
         return torch.randperm(10, generator=generator)
     
     def __len__(self):
