@@ -14,6 +14,7 @@ from utils.io import save_checkpoint
 from model import InContextLearner
 from torchvision import datasets
 from utils.evaluation import evaluate
+import multiprocessing as mp
 
 global config
 config = {
@@ -63,11 +64,7 @@ def train_model(hidden_size):
     #for hidden_size in hidden_size_range:
     for num_tasks in num_tasks_range:
         init_dicts(train_results,test_results, hidden_size,num_tasks)
-        config["num_of_tasks"] = num_tasks
-        config["in_context_learner"]["dim"] = hidden_size
-        config["in_context_learner"]["inner_dim"] = config["in_context_learner"]["dim"] * 4
-        model = InContextLearner(**config["in_context_learner"]).to(config["device"])
-        model_optim = torch.optim.Adam(model.parameters(), lr=config["lr"], eps=config["eps"])
+        model, model_optim = reset_model(num_tasks, hidden_size)
         if num_tasks != num_tasks_range[0]:
             del train_loader, test_loader
         train_loader,test_loader = init_datasets(hidden_size)
@@ -113,6 +110,14 @@ def train_model(hidden_size):
         save_results(test_results,train_results,epoch,hidden_size, num_tasks)
     return test_results, train_results
 
+def reset_model(num_tasks, hidden_size):
+    config["num_of_tasks"] = num_tasks
+    config["in_context_learner"]["dim"] = hidden_size
+    config["in_context_learner"]["inner_dim"] = config["in_context_learner"]["dim"] * 4
+    model = InContextLearner(**config["in_context_learner"]).to(config["device"])
+    model_optim = torch.optim.Adam(model.parameters(), lr=config["lr"], eps=config["eps"])
+    return model, model_optim
+
     #raise NotImplementedError
 def save_results(test, train, epoch, hidden_size, num_tasks):
     filename = f"data/results/transformer_test_{epoch}_{hidden_size}_{num_tasks}.pkl"
@@ -148,7 +153,8 @@ def init_datasets(hidden_size):
     # torch.save(test_loader, "artifacts/data/test_loader.pt")
 
 if __name__ == "__main__":
-    hidden_size_range = [2**i for i in range(7, 10)]
+    mp.set_start_method("spawn")
+    hidden_size_range = [2**i for i in range(9, 10)]
     train_results_list = []
     test_results_list = []
     try:
@@ -169,12 +175,12 @@ if __name__ == "__main__":
         all_test_results.update(result)
     print(all_test_results)
 
-    filename = 'transformers_results_train_1.pkl'
+    filename = f'transformers_results_train_{hidden_size_range[0]}_{hidden_size_range[-1]}.pkl'
     # Writing the dictionary to a file
     with open(filename, 'wb') as file:
         pickle.dump(all_train_results, file)
 
-    filename = 'transformers_results_test_1.pkl'
+    filename = f'transformers_results_test_{hidden_size_range[0]}_{hidden_size_range[-1]}.pkl'
     # Writing the dictionary to a file
     with open(filename, 'wb') as file:
         pickle.dump(all_test_results, file)

@@ -8,7 +8,7 @@ import random
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import polars as pl
 import math
-import multiprocessing
+import multiprocessing as mp
 DATA_PATH = os.path.join(os.getcwd(),"data")
 
 
@@ -40,6 +40,7 @@ class RandomLinearProjectionMNIST(Dataset):
     ):
         self.orig_mnist_dataset = orig_mnist_dataset
         self.ext = "train" if is_train else "test"
+        self.seed = seed
         self.num_tasks = num_tasks
         self.labels_shifted_by_one = labels_shifted_by_one
         self.spare_mem = spare_mem
@@ -54,52 +55,47 @@ class RandomLinearProjectionMNIST(Dataset):
         
 
     def create_augmented_tasks(self):
-        # Original data is considered task 0
         original_images = [self.orig_mnist_dataset[i][0].view(784) for i in range(len(self.orig_mnist_dataset))]
         original_images = [(transformed_image - transformed_image.mean()) / (transformed_image.std() + 1e-16) for transformed_image in original_images]
         original_labels = [self.orig_mnist_dataset[i][1] for i in range(len(self.orig_mnist_dataset))]
        
         if self.num_tasks > (2 ** 19):
-            self.create_and_save_df(original_images, original_labels, 0)
-            self.dataset = pl.read_parquet(f"dataset_{self.curr_index}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet") 
-        #else:
-        df = pl.DataFrame({
-        "images": [image.numpy() for image in original_images],
-        "labels": original_labels})
+            filename = f"dataset_0_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet"
+            if not os.path.exists(filename):
+                self.create_and_save_df(original_images, original_labels, 0)
+            self.dataset = pl.read_parquet(filename)
+        else:
+            self.dataset = pl.DataFrame({
+                "images": [image.numpy() for image in original_images],
+                "labels": original_labels
+            })
 
         original_images = []
         original_labels = []
         num_batches = math.ceil(self.num_tasks / self.batch_size)
-        num_workers = int(os.environ.get('OMP_NUM_THREADS',
-    multiprocessing.cpu_count()))
+        num_workers = int(os.environ.get('OMP_NUM_THREADS',mp.cpu_count()))
         num_workers = min(num_workers, num_batches)
         print(num_workers)
-        multiprocessing.set_start_method("spawn")
-        pool = multiprocessing.Pool(processes=num_workers)
-        try:
-            # Map your operations to the pool
+
+        with mp.Pool(processes=num_workers) as pool:
             results = pool.map(self.perform_batch_op, range(num_batches))
-        finally:
-            # Ensure the pool is closed to free up resources
-            pool.close()
-            pool.join()
+
         if (any(item is None for item in results)):
             self.dataset = pl.read_parquet(f"dataset_0_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet")
             return
-        dataframes = [df] + results
-        print("Concatenated all datasets")
-        self.dataset = pl.concat(dataframes)
+        else:
+            dataframes = [self.dataset] + results
+            self.dataset = pl.concat(dataframes)
+            print("Concatenated all datasets")
     
     def perform_batch_op(self, batch):
+        filename = f"dataset_{batch + 1}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet"
+        if os.path.exists(filename):
+            return None
         start_index = batch * self.batch_size
-        original_images = []
-        original_labels = []
         end_index = min((batch + 1) * self.batch_size, self.num_tasks)
         futures = [self.process_task(task_idx) for task_idx in range(start_index, end_index)]
-        for i, future in enumerate(futures):
-            transformed_image, permuted_label = future
-            original_images.append(transformed_image)
-            original_labels.append(permuted_label.item())
+        original_images, original_labels = zip(*futures)
         return self.create_and_save_df(original_images, original_labels, batch+1)
 
     def get_dataframe(self, idx):
@@ -130,11 +126,11 @@ class RandomLinearProjectionMNIST(Dataset):
         filename = f"dataset_{index}_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet"
         if (self.num_tasks >  (2 ** 19)):
             df.write_parquet(filename)
+            print(f"Wrote file {filename}")
+            del df
         else:
             print(f"Returned df with index {index}")
             return df
-        print(f"Wrote file {filename}")
-        del df
     
     def process_task(self, task_idx):
         rand_idx = np.random.randint(0, len(self.orig_mnist_dataset))
