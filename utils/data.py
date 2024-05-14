@@ -76,10 +76,13 @@ class RandomLinearProjectionMNIST(Dataset):
         num_workers = int(os.environ.get('OMP_NUM_THREADS',mp.cpu_count()))
         num_workers = min(num_workers, num_batches)
         print(num_workers)
-
-        with mp.Pool(processes=num_workers) as pool:
+        pool = mp.Pool(processes=num_workers)
+        try:
             results = pool.map(self.perform_batch_op, range(num_batches))
-
+        finally:
+            pool.close()
+            pool.join()
+            
         if (any(item is None for item in results)):
             self.dataset = pl.read_parquet(f"dataset_0_{self.ext}_{self.num_tasks}_{self.hidden_size}.parquet")
             return
