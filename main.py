@@ -15,6 +15,7 @@ from model import InContextLearner
 from torchvision import datasets
 from utils.evaluation import evaluate
 import multiprocessing as mp
+import argparse
 
 global config
 config = {
@@ -153,8 +154,13 @@ def init_datasets(hidden_size):
     # torch.save(test_loader, "artifacts/data/test_loader.pt")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hidden_size_start", "--hss", default=4, type=int)
+    args = parser.parse_args()
+    start = args.hidden_size_start
+
     mp.set_start_method("spawn")
-    hidden_size_range = [2**i for i in range(9, 10)]
+    hidden_size_range = [2**i for i in range(start, 10)]
     train_results_list = []
     test_results_list = []
     try:
